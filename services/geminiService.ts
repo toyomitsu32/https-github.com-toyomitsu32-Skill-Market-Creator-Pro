@@ -203,7 +203,7 @@ Generate a thumbnail image for a skill market service listing.
   };
 
   if (useHighQuality) {
-    config.imageConfig.imageSize = "1K";
+    config.imageConfig.imageSize = "2K";
   }
 
   const response = await ai.models.generateContent({

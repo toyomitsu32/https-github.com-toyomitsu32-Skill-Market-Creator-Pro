@@ -168,11 +168,11 @@ const ServiceResult: React.FC<ServiceResultProps> = ({
               <div className="flex flex-col items-center gap-6 py-6">
                 <div 
                   onClick={onGenerateImage} 
-                  className="w-full aspect-[4/3] rounded-[1.5rem] bg-stone-100 border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:bg-stone-200 hover:border-rose-300 transition-all group"
+                  className="w-full aspect-[3/2] rounded-[1.5rem] bg-stone-100 border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:bg-stone-200 hover:border-rose-300 transition-all group"
                 >
                   <span className="text-5xl mb-3 group-hover:scale-110 transition-transform">🖼️</span>
                   <span className="font-bold text-stone-600 group-hover:text-rose-500">サムネイル画像を作成</span>
-                  <span className="text-xs text-stone-400 mt-2">AIがサービスに合った画像を生成します</span>
+                  <span className="text-xs text-stone-400 mt-2">サービスに合った画像を生成します</span>
                   <span className="text-[10px] text-stone-300">(660x440px)</span>
                 </div>
 
@@ -201,14 +201,14 @@ const ServiceResult: React.FC<ServiceResultProps> = ({
                           【Gemini 3 Pro 利用時の留意点】
                         </h5>
                         <ul className="text-stone-500 text-[11px] leading-relaxed space-y-1.5 list-disc text-left max-w-[340px] pl-4">
-                          <li>画像内にタイトルやキャッチコピーの<span className="font-bold text-stone-700">文字を入れる</span>ことができます。</li>
+                          <li>タイトルやキャッチコピーの<span className="font-bold text-stone-700">文字を入れる</span>ことができます。</li>
                           <li>APIキーの設定が必要になります。</li>
                         </ul>
                       </div>
                     ) : (
                       <div className="animate-in fade-in slide-in-from-bottom-1 max-w-[340px]">
                         <p className="text-stone-400 text-[11px] leading-relaxed mt-2">
-                          ※標準モデル（Gemini 2.5）は画像内の文字入れを行いませんが、高速かつ安定して生成できます。
+                          ※Gemini 2.5 では画像内の文字入れを行いませんが、無料かつ高速で生成できます。
                         </p>
                       </div>
                     )}
