@@ -5,10 +5,11 @@ import { SkillIdea } from '../types';
 interface IdeaListProps {
   ideas: SkillIdea[];
   onSelect: (idea: SkillIdea) => void;
+  onDelete: (e: React.MouseEvent, id: string) => void;
   onBack: (e?: React.MouseEvent) => void;
 }
 
-const IdeaList: React.FC<IdeaListProps> = ({ ideas, onSelect, onBack }) => {
+const IdeaList: React.FC<IdeaListProps> = ({ ideas, onSelect, onDelete, onBack }) => {
   if (ideas.length === 0) {
     return (
       <div className="p-12 text-center flex flex-col items-center justify-center h-full min-h-[400px]">
@@ -65,15 +66,24 @@ const IdeaList: React.FC<IdeaListProps> = ({ ideas, onSelect, onBack }) => {
                 <span className={`text-[10px] font-bold uppercase tracking-widest ${isGenerated ? 'text-green-600' : 'text-stone-400'}`}>
                   Idea
                 </span>
-                {isGenerated ? (
-                   <span className="text-[10px] font-bold text-green-700 bg-green-200/50 px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
-                     ✅ 作成済
-                   </span>
-                ) : (
-                  <span className={`opacity-0 group-hover:opacity-100 transition-all duration-300 text-xs font-bold flex items-center gap-1 ${isGenerated ? 'text-green-600' : 'text-rose-500'}`}>
-                    作成する <span>→</span>
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={(e) => onDelete(e, idea.id)}
+                    className="p-1.5 text-stone-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    title="削除"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  </button>
+                  {isGenerated ? (
+                     <span className="text-[10px] font-bold text-green-700 bg-green-200/50 px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
+                       ✅ 作成済
+                     </span>
+                  ) : (
+                    <span className={`opacity-0 group-hover:opacity-100 transition-all duration-300 text-xs font-bold flex items-center gap-1 ${isGenerated ? 'text-green-600' : 'text-rose-500'}`}>
+                      作成する <span>→</span>
+                    </span>
+                  )}
+                </div>
               </div>
               
               <h4 className="text-lg font-bold text-stone-800 mb-4 leading-snug group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-stone-800 group-hover:to-stone-600 transition-colors">

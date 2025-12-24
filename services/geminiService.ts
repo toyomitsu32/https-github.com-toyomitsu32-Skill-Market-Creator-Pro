@@ -1,28 +1,41 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserInput, SkillIdea } from "../types";
-
-const getApiKey = (): string => {
-  // 1. Check environment variable
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    const key = process.env.API_KEY;
-    if (key && key !== "undefined") return key.trim();
-  }
-
-  // 2. Check local storage for manually entered key
-  const storedKey = typeof localStorage !== 'undefined' ? localStorage.getItem("gemini_api_key") : null;
-  return storedKey ? storedKey.trim() : "";
-};
 
 const generateUniqueId = (): string => {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 };
 
+export const getThumbnailPrompt = (idea: SkillIdea, useHighQuality: boolean = false): string => {
+  let catchphrase = "";
+  // Check if content is provided in the idea or externally
+  const content = idea.generatedContent || "";
+  const match = content.match(/キャッチコピー[：:]\s*(.*)/);
+  if (match) {
+    catchphrase = match[1].trim();
+  }
+
+  if (useHighQuality) {
+    return `Generate a thumbnail image for a skill market service listing.
+**Text in Image:**
+- Title: "${idea.title}"
+- Catchphrase: "${catchphrase}"
+**Context:** ${idea.strength}, ${idea.solution}
+**Requirements:**
+- Aspect Ratio: 3:2
+- **Text Handling:** Include the Service Title exactly as provided. For the Catchphrase, do NOT include the full text. Instead, **extract only the most essential, punchy keywords or a very short summary** into a concise, visually appealing tagline inside the image.
+- Ensure text is large, bold, and easy to read, but **avoid overcrowding the image with excessively long text.**
+- Professional style.
+- High definition.`;
+  } else {
+    return `Generate a thumbnail image for a skill market service listing.
+**Context:** "${idea.title}", ${idea.strength}
+**Requirements:** Do NOT include any text inside the image. Pure visual representation. Professional and attractive.`;
+  }
+};
+
 export const generateIdeas = async (input: UserInput): Promise<SkillIdea[]> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("KEY_RESET_REQUIRED");
-  
-  const ai = new GoogleGenAI({ apiKey });
+  // Always obtain the API key exclusively from process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const prompt = `
 あなたはプロのスキルマーケット・コンサルタントです。
@@ -79,14 +92,12 @@ JSON配列で出力してください。各要素は以下のキーを持つオ�
 };
 
 export const generateServicePage = async (selectedIdea: SkillIdea): Promise<string> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("KEY_RESET_REQUIRED");
-
-  const ai = new GoogleGenAI({ apiKey });
+  // Always create a new GoogleGenAI instance right before making an API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
 【役割】
-あなたは、リベシティ「スキルマーケットonline」に出品するプロの販売ページクリエイターです。
+あなたは、リベシティ「スキルマーケットonline」に出品するプロの出品ページクリエイターです。
 以下の「カテゴリマスター」と「カテゴリ自動決定ルール」を厳守し、出品ページとしてそのまま使える魅力的な文章を作成してください。
 
 【カテゴリマスター】
@@ -102,7 +113,7 @@ IT・プログラミング（作業自動化・効率化／Webアプリ／モバ
 ライティング（コピーライティング／記事作成／文章校正・編集・リライト／取材・インタビュー／シナリオ・脚本・台本／その他）
 翻訳（翻訳／その他）
 せどり・物販（オーダーメイドツール／各種代行／その他）
-コンサル・ビジネス代行（会計・経理・財務・税務／行政法務／オンライン秘書／営業・集客／資料・企画書／起業・事業・経営／補助金・助成金／DX／データ分析・整理・集計／人事・労務／スカウト・ヘッドハント／文字起こし・データ入力／イベント企画・運営／不動産／YouTube・音声配信／SNS／ブログ・アフィリエイト／コンテンツ販売／EC／せどり・物販／家計見直し／通信費見直し／その他）
+コンサル・ビジネス代行（会計・経理・財務・税務／行政法務／オンライン秘書／営業・集集／資料・企画書／起業・事業・経営／補助金・助成金／DX／データ分析・整理・集計／人事・労務／スカウト・ヘッドハント／文字起こし・データ入力／イベント企画・運営／不動産／YouTube・音声配信／SNS／ブログ・アフィリエイト／コンテンツ販売／EC／せどり・物販／家計見直し／通信費見直し／その他）
 コーチング（自己理解・強みを活かす／キャリア・転職相談／人生お悩み相談／恋愛・結婚の相談／子育て・教育・進路相談／資格取得の相談／オンライン家庭教師／話術・コミュニケーション／その他）
 スキルアップ支援（イラスト・マンガ／デザイン／写真・撮影／動画／音楽・音響・ナレーション／ITスキル／Web制作・Webデザイン／プログラミング／マーケティング／ハンドメイド／ライティング／その他）
 ライフスタイル（ヨガ・ピラティス／フィットネス／ダイエット／ダンス／ファッション／美容／話し相手／DIY／整理収納・インテリア／グルメ・料理・献立／旅行・お出かけ／ペット／その他）
@@ -162,37 +173,9 @@ IT・プログラミング（作業自動化・効率化／Webアプリ／モバ
 };
 
 export const generateThumbnail = async (idea: SkillIdea, useHighQuality: boolean = false): Promise<string> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("KEY_RESET_REQUIRED");
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  let catchphrase = "";
-  if (idea.generatedContent) {
-    const match = idea.generatedContent.match(/キャッチコピー[：:]\s*(.*)/);
-    if (match) {
-      catchphrase = match[1].trim();
-    }
-  }
-  
-  let prompt = "";
-
-  if (useHighQuality) {
-    prompt = `
-Generate a thumbnail image for a skill market service listing.
-**Text in Image:**
-- Title: "${idea.title}"
-- Catchphrase: "${catchphrase}"
-**Context:** ${idea.strength}, ${idea.solution}
-**Requirements:** Include the Service Title and Catchphrase as text inside the image. Large, bold, easy to read. Professional style.
-`;
-  } else {
-    prompt = `
-Generate a thumbnail image for a skill market service listing.
-**Context:** "${idea.title}", ${idea.strength}
-**Requirements:** Do NOT include any text inside the image. Pure visual representation. Professional and attractive.
-`;
-  }
+  // Always create a new GoogleGenAI instance right before making an API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const prompt = getThumbnailPrompt(idea, useHighQuality);
 
   const model = useHighQuality ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
   

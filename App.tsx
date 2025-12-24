@@ -30,7 +30,7 @@ const App: React.FC = () => {
       if (aistudio) {
         const selected = await aistudio.hasSelectedApiKey();
         setHasKey(selected);
-      } else if (process.env.API_KEY || localStorage.getItem("gemini_api_key")) {
+      } else if (process.env.API_KEY) {
         setHasKey(true);
       }
       
@@ -53,9 +53,29 @@ const App: React.FC = () => {
     checkKey();
   }, []);
 
+  const saveIdeasToStorage = (data: SkillIdea[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEY_IDEAS, JSON.stringify(data));
+    } catch (e) {
+      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+        console.warn("Storage quota exceeded. Attempting to save without image data.");
+        try {
+          const reducedData = data.map(item => ({ ...item, thumbnailUrl: undefined }));
+          localStorage.setItem(STORAGE_KEY_IDEAS, JSON.stringify(reducedData));
+          setIdeas(reducedData);
+          alert("ストレージ容量がいっぱいになったため、画像データを削除して保存しました。");
+        } catch (innerE) {
+          console.error("Critical storage failure. Clearing ideas from storage.", innerE);
+          localStorage.removeItem(STORAGE_KEY_IDEAS);
+        }
+      } else {
+        console.error("Failed to save to localStorage", e);
+      }
+    }
+  };
+
   const inputWords = useMemo(() => {
     if (!rawInputText) return [];
-    // Split by whitespace, punctuation, and common separators. Filter for words 2 chars or longer.
     return rawInputText
       .split(/[\s,，.．、。!！?？\n\r\t]+/)
       .filter(w => w.length >= 2 && w.length < 15);
@@ -67,13 +87,6 @@ const App: React.FC = () => {
       await aistudio.openSelectKey();
       setHasKey(true);
       return true;
-    } else {
-      const manualKey = prompt("APIキーを入力してください (Google AI Studio)");
-      if (manualKey) {
-        localStorage.setItem("gemini_api_key", manualKey.trim());
-        setHasKey(true);
-        return true;
-      }
     }
     return false;
   };
@@ -84,31 +97,41 @@ const App: React.FC = () => {
     if (aistudio) {
       keyExists = await aistudio.hasSelectedApiKey();
     } else {
-      keyExists = !!(process.env.API_KEY || localStorage.getItem("gemini_api_key"));
+      keyExists = !!process.env.API_KEY;
     }
-    if (!keyExists) return await handleOpenKeySelection();
-    return true;
+    if (!keyExists && aistudio) return await handleOpenKeySelection();
+    return keyExists;
+  };
+
+  const handleApiError = (error: any) => {
+    console.error(error);
+    const msg = error.message || "";
+    if (msg.includes("Requested entity was not found")) {
+      setHasKey(false);
+      handleOpenKeySelection();
+    } else {
+      alert("エラーが発生しました。しばらくしてから再度お試しください。");
+    }
   };
 
   const handleStartIdeaGeneration = async (input: UserInput) => {
     setRawInputText(input.rawText);
-    localStorage.setItem(STORAGE_KEY_INPUT, input.rawText);
+    try {
+      localStorage.setItem(STORAGE_KEY_INPUT, input.rawText);
+    } catch (e) {
+      console.warn("Failed to save raw input to storage", e);
+    }
     
     setIsLoading(true);
     setLoadingTitle("AIが思考中...");
-    setLoadingMessage("あなたの情報をAIが分析し、最適なアイデアを練り上げています...");
+    setLoadingMessage("あなたの情報を分析し、最適なアイデアを練り上げています...");
     try {
       const result = await generateIdeas(input);
       setIdeas(result);
-      localStorage.setItem(STORAGE_KEY_IDEAS, JSON.stringify(result));
+      saveIdeasToStorage(result);
       setStep(Step.IDEAS);
     } catch (error: any) {
-      console.error(error);
-      if (error.message === "KEY_RESET_REQUIRED") {
-        handleOpenKeySelection();
-      } else {
-        alert("アイデアの生成に失敗しました。APIキーを確認してください。");
-      }
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +150,7 @@ const App: React.FC = () => {
     setStep(Step.GENERATING_DETAIL);
     setIsLoading(true);
     setLoadingTitle(`「${idea.title}」`);
-    setLoadingMessage("このアイデアの販売ページを構成しています...");
+    setLoadingMessage("このアイデアの出品ページを構成しています...");
     
     try {
       const pageText = await generateServicePage(idea);
@@ -135,20 +158,24 @@ const App: React.FC = () => {
         i.id === idea.id ? { ...i, generatedContent: pageText } : i
       );
       setIdeas(updatedIdeas);
-      localStorage.setItem(STORAGE_KEY_IDEAS, JSON.stringify(updatedIdeas));
+      saveIdeasToStorage(updatedIdeas);
       setServiceText(pageText);
       setStep(Step.DETAIL);
       window.scrollTo(0, 0);
     } catch (error: any) {
-      console.error(error);
       setStep(Step.IDEAS);
-      if (error.message === "KEY_RESET_REQUIRED") {
-        handleOpenKeySelection();
-      } else {
-        alert("ページの作成に失敗しました。");
-      }
+      handleApiError(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteIdea = (e: React.MouseEvent, ideaId: string) => {
+    e.stopPropagation();
+    if (confirm("このアイデアを削除しますか？")) {
+      const updatedIdeas = ideas.filter(i => i.id !== ideaId);
+      setIdeas(updatedIdeas);
+      saveIdeasToStorage(updatedIdeas);
     }
   };
 
@@ -163,7 +190,7 @@ const App: React.FC = () => {
     
     setIsLoading(true);
     setLoadingTitle("サムネイル生成中...");
-    setLoadingMessage("AIがサービスに最適な画像を生成しています...");
+    setLoadingMessage("サービスに最適な画像を生成しています...");
 
     try {
       const imageUrl = await generateThumbnail(selectedIdea, useQuality);
@@ -171,77 +198,75 @@ const App: React.FC = () => {
         i.id === selectedIdea.id ? { ...i, thumbnailUrl: imageUrl } : i
       );
       setIdeas(updatedIdeas);
-      localStorage.setItem(STORAGE_KEY_IDEAS, JSON.stringify(updatedIdeas));
+      saveIdeasToStorage(updatedIdeas);
       setSelectedIdea(prev => prev ? ({ ...prev, thumbnailUrl: imageUrl }) : null);
     } catch (error: any) {
-      console.error("Image generation error", error);
-      const msg = error.message?.toLowerCase() || "";
-      if (msg.includes("permission") || msg.includes("quota") || msg.includes("403") || msg.includes("not found")) {
-        const reset = confirm("APIキーの権限が不足しているか、無効なようです。APIキーを選択し直しますか？");
-        if (reset) handleOpenKeySelection();
-      } else {
-        alert(`画像の生成に失敗しました: ${error.message}`);
-      }
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
   };
 
   const forceReset = () => {
+    // 指示に基づき、localStorageのデータを物理的に消去
     localStorage.removeItem(STORAGE_KEY_IDEAS);
     localStorage.removeItem(STORAGE_KEY_INPUT);
+    
+    // 全ステートを初期化
     setIdeas([]);
     setRawInputText("");
     setStep(Step.INPUT);
     setServiceText("");
     setSelectedIdea(null);
     setShowResetConfirm(false);
+    
+    // 最上部へスクロール
     window.scrollTo(0, 0);
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12 font-sans relative">
-      <header className="mb-12 flex flex-col md:flex-row items-center justify-between gap-6 relative z-50">
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-12 font-sans relative">
+      <header className={`mb-6 md:mb-12 flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6 relative z-50 transition-all ${step === Step.INPUT ? 'md:mb-8' : ''}`}>
         <div 
           className={`text-center md:text-left ${step !== Step.INPUT ? 'cursor-pointer group' : ''}`}
           onClick={() => step !== Step.INPUT && setShowResetConfirm(true)}
         >
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-2 tracking-tight">
+          <h1 className="text-3xl md:text-5xl font-extrabold mb-1 md:mb-2 tracking-tight">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-stone-800 to-stone-600">Skill Market</span>
             <span className="block md:inline md:ml-2 bg-clip-text text-transparent bg-gradient-to-r from-orange-400 via-rose-500 to-purple-600">
               Creator Pro
             </span>
           </h1>
-          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
-            <p className="text-stone-500 font-medium tracking-wide text-sm group-hover:text-rose-500 transition-colors">
-              あなたの「好き」を、価値あるスキルマーケットサービスへ。
+          <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+            <p className="text-stone-400 md:text-stone-500 font-medium tracking-wide text-xs md:text-sm group-hover:text-rose-500 transition-colors">
+              あなたの「好き」を、価値あるスキルマーケット出品サービスへ。
             </p>
-            <a 
-              href="https://library.libecity.com/articles/01KD26FQVJ9VJNH99JBJ9F3TGS" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-500 hover:text-rose-600 bg-rose-50/50 hover:bg-rose-50 px-3 py-1.5 rounded-full border border-rose-100 transition-all shrink-0"
-            >
-              <span>📖</span> 使い方・解説記事
-            </a>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          <a 
+            href="https://library.libecity.com/articles/01KD26FQVJ9VJNH99JBJ9F3TGS" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-[10px] md:text-xs font-bold text-rose-500 hover:text-rose-600 bg-rose-50/50 hover:bg-rose-50 px-3 md:px-4 py-2 md:py-2.5 rounded-full border border-rose-100 transition-all shadow-sm shrink-0"
+          >
+            <span>📖</span> 使い方
+          </a>
           <button 
             type="button"
             onClick={handleOpenKeySelection}
-            className={`text-xs font-bold flex items-center gap-1.5 px-4 py-2.5 rounded-full border transition-all cursor-pointer relative z-50 ${
+            className={`text-[10px] md:text-xs font-bold flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-full border transition-all cursor-pointer relative z-50 ${
               hasKey 
                 ? 'text-stone-400 hover:text-stone-600 bg-white/50 hover:bg-white border-stone-200/50 hover:border-stone-200' 
                 : 'text-rose-600 bg-rose-50 border-rose-200 hover:bg-rose-100 hover:border-rose-300 shadow-sm'
             }`}
           >
-            <span>{hasKey ? '⚙️' : '✨'}</span> APIキーを設定
+            <span>{hasKey ? '⚙️' : '✨'}</span> {hasKey ? 'キー設定' : 'APIキー設定'}
           </button>
         </div>
       </header>
 
-      <main className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-stone-200/50 overflow-hidden min-h-[600px] border border-white ring-1 ring-stone-100 relative flex flex-col z-10">
+      <main className="bg-white/80 backdrop-blur-xl rounded-[1.5rem] md:rounded-[2.5rem] shadow-2xl shadow-stone-200/50 overflow-hidden min-h-[500px] md:min-h-[600px] border border-white ring-1 ring-stone-100 relative flex flex-col z-10">
         <div className="absolute -top-20 -right-20 w-96 h-96 bg-gradient-to-br from-orange-100/40 to-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-20 -left-20 w-96 h-96 bg-gradient-to-tr from-purple-100/40 to-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
 
@@ -251,11 +276,13 @@ const App: React.FC = () => {
             <IdeaList 
               ideas={ideas} 
               onSelect={handleSelectIdea} 
+              onDelete={handleDeleteIdea}
               onBack={() => setShowResetConfirm(true)} 
             />
           )}
-          {step === Step.DETAIL && (
+          {step === Step.DETAIL && selectedIdea && (
             <ServiceResult 
+              idea={selectedIdea}
               content={serviceText} 
               thumbnailUrl={selectedIdea?.thumbnailUrl}
               onGenerateImage={() => handleGenerateThumbnailImage()}
@@ -268,21 +295,60 @@ const App: React.FC = () => {
         </div>
       </main>
 
+      {/* リセット確認モーダル (最初からやり直す) */}
       {showResetConfirm && (
-        <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] p-8 max-sm w-full shadow-2xl border border-white">
-            <h3 className="text-xl font-bold text-stone-800 mb-4">最初からやり直しますか？</h3>
-            <p className="text-stone-500 mb-8 leading-relaxed text-sm">現在のアイデアやデータは破棄されます。</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 px-4 rounded-xl font-bold text-stone-500 bg-stone-100">キャンセル</button>
-              <button onClick={forceReset} className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-rose-500">はい、戻る</button>
+        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] md:rounded-[3rem] p-10 md:p-14 max-w-md w-full shadow-2xl border border-white flex flex-col items-center text-center">
+            <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center text-4xl mb-8 shadow-inner">
+              🗑️
+            </div>
+            <h3 className="text-2xl font-black text-stone-800 mb-4 tracking-tight">最初からやり直しますか？</h3>
+            <p className="text-stone-500 mb-10 leading-relaxed font-medium">
+              全てのデータ（履歴・画像）を消去して初期状態に戻しますか？<br/>
+              <span className="text-rose-500 text-sm font-bold mt-2 inline-block">※この操作は取り消せません。</span>
+            </p>
+            <div className="flex flex-col gap-4 w-full">
+              <button 
+                onClick={forceReset} 
+                className="w-full py-4.5 px-6 rounded-2xl font-bold text-white bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 transition-all shadow-xl shadow-rose-200 active:scale-95"
+              >
+                はい、データを消去してリセット
+              </button>
+              <button 
+                onClick={() => setShowResetConfirm(false)} 
+                className="w-full py-4 px-6 rounded-2xl font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
+              >
+                キャンセル
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {isLoading && <LoadingOverlay message={loadingMessage} title={loadingTitle} sourceWords={inputWords} />}
-      <footer className="text-center mt-12 text-stone-400 text-sm font-medium">Powered by Gemini</footer>
+      
+      <footer className="mt-12 md:mt-16 pb-8">
+        <div className="max-w-3xl mx-auto bg-stone-100/50 rounded-[2rem] p-8 border border-stone-200/60">
+          <h4 className="text-stone-600 font-bold text-sm mb-4 flex items-center gap-2">
+            <span>🛡️</span> 免責事項
+          </h4>
+          <div className="space-y-3 text-[11px] md:text-xs text-stone-500 leading-relaxed font-medium">
+            <p>
+              ・本サービスが生成する全てのコンテンツ（アイデア、文章、画像、カテゴリ提案等）はAI（人工知能）によって自動生成されたものであり、その内容の正確性、有用性、最新性、合法性、および道徳性を保証するものではありません。
+            </p>
+            <p>
+              ・High Quality のサムネイル画像を生成するには、利用者のAPI利用料金がかかります。ご自身のAPIキーの設定をご確認の上ご利用ください。
+            </p>
+            <p>
+              ・生成された内容を実際のスキルマーケットに出品する際は、必ずご自身で内容を確認・修正し、各プラットフォームの利用規約やガイドラインを遵守してください。
+            </p>
+            <p>
+              ・本サービスの利用により生じた損害、トラブル、不利益、または第三者との権利侵害に関する紛争について、本サービスの提供者は一切の責任を負いかねます。
+            </p>
+          </div>
+        </div>
+        <p className="text-center mt-8 text-stone-400 text-[10px] md:text-sm font-medium italic">Powered by Gemini</p>
+      </footer>
     </div>
   );
 };
